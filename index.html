@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SM Meetup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Shown when js/firebase-config.js still has placeholder values -->
+  <section id="config-screen" class="screen" hidden>
+    <div class="card">
+      <h1>SM Meetup</h1>
+      <p class="tagline">Almost there — Firebase isn't connected yet.</p>
+      <ol class="setup-steps">
+        <li>Create a project at <b>console.firebase.google.com</b></li>
+        <li>Enable <b>Email/Password</b> sign-in (Build &rarr; Authentication)</li>
+        <li>Create a <b>Firestore database</b> and paste in <code>firestore.rules</code></li>
+        <li>Copy your web-app config into <code>js/firebase-config.js</code></li>
+      </ol>
+      <p class="hint">Full walkthrough in <code>SETUP.md</code>.</p>
+    </div>
+  </section>
+
+  <!-- Sign in / create account -->
+  <section id="auth-screen" class="screen" hidden>
+    <div class="card">
+      <h1>SM Meetup</h1>
+      <p class="tagline">Find and host activities with people at school.</p>
+      <form id="auth-form" novalidate>
+        <div id="auth-error" class="error" hidden></div>
+        <label>School email
+          <input type="email" id="auth-email" autocomplete="email" placeholder="you@smtexas.org" required>
+        </label>
+        <label>Password
+          <input type="password" id="auth-password" autocomplete="current-password" minlength="6" required>
+        </label>
+        <button type="submit" id="auth-submit" class="btn primary">Sign in</button>
+      </form>
+      <p class="auth-links">
+        <button type="button" id="auth-switch" class="linklike">New here? Create an account</button>
+        <button type="button" id="auth-forgot" class="linklike">Forgot password?</button>
+      </p>
+    </div>
+  </section>
+
+  <!-- Email verification / wrong-domain gate -->
+  <section id="verify-screen" class="screen" hidden>
+    <div class="card">
+      <h1 id="verify-title">Verify your email</h1>
+      <p id="verify-msg" class="tagline"></p>
+      <div id="verify-error" class="error" hidden></div>
+      <div class="btn-row">
+        <button id="verify-continue" class="btn primary">I clicked the link — continue</button>
+        <button id="verify-resend" class="btn">Resend email</button>
+        <button id="verify-signout" class="btn">Sign out</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- First-time profile setup (also used to edit your profile later) -->
+  <section id="setup-screen" class="screen" hidden>
+    <div class="card">
+      <h1 id="setup-title">Set up your profile</h1>
+      <p class="tagline">Everyone on SM Meetup shares their name, grade, and <b>two ways to reach them</b> that they actually check.</p>
+      <form id="setup-form" novalidate>
+        <div id="setup-error" class="error" hidden></div>
+        <label>Display name
+          <input id="setup-name" maxlength="40" required placeholder="First name + last initial">
+        </label>
+        <label>Grade
+          <select id="setup-grade" required>
+            <option value="">Select your grade…</option>
+            <option value="9">9th</option>
+            <option value="10">10th</option>
+            <option value="11">11th</option>
+            <option value="12">12th</option>
+          </select>
+        </label>
+        <p class="hint">Pick your grade right now — it moves up automatically when the new school year starts in late August.</p>
+        <fieldset>
+          <legend>Contact #1</legend>
+          <div class="contact-row">
+            <select id="setup-c1-type"></select>
+            <input id="setup-c1-value" required placeholder="e.g. (555) 123-4567">
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Contact #2</legend>
+          <div class="contact-row">
+            <select id="setup-c2-type"></select>
+            <input id="setup-c2-value" required placeholder="e.g. you@gmail.com">
+          </div>
+        </fieldset>
+        <p class="hint">Hosts and participants see these so they can coordinate with you.</p>
+        <div class="btn-row">
+          <button type="submit" class="btn primary">Save profile</button>
+          <button type="button" id="setup-cancel" class="btn" hidden>Cancel</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <!-- Main app -->
+  <section id="main-screen" hidden>
+    <header id="topbar">
+      <div class="brand"><span class="brand-mark">SM</span><span class="brand-name">Meetup</span></div>
+      <div class="month-nav">
+        <button id="prev-month" class="btn icon" title="Previous month">&lsaquo;</button>
+        <span id="month-label"></span>
+        <button id="next-month" class="btn icon" title="Next month">&rsaquo;</button>
+        <button id="today-btn" class="btn small">Today</button>
+      </div>
+      <div id="grade-filter" class="grade-filter" title="Show activities open to these grades"></div>
+      <div class="spacer"></div>
+      <button id="avail-btn" class="btn" title="Mark when you're free or busy">Availability</button>
+      <button id="friends-btn" class="btn">Friends <span id="friends-badge" class="count-badge" hidden></span></button>
+      <button id="create-btn" class="btn primary">+ Create activity</button>
+      <button id="profile-btn" class="linklike"></button>
+      <button id="signout-btn" class="linklike">Sign out</button>
+    </header>
+    <div id="notice-banner" class="notice" hidden></div>
+    <div id="layout">
+      <main id="calendar"></main>
+      <aside id="sidebar"></aside>
+    </div>
+  </section>
+
+  <!-- Availability editor (content rendered by js/availability.js) -->
+  <div id="avail-overlay" class="overlay" hidden></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
