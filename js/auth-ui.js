@@ -1,6 +1,6 @@
 import { auth, db } from "./firebase.js";
 import { state } from "./store.js";
-import { $, CONTACT_TYPES, cap, SCHOOL_DOMAIN, classOfFromGrade, currentGrade } from "./util.js";
+import { $, el, CONTACT_TYPES, cap, SCHOOL_DOMAIN, classOfFromGrade, currentGrade, generateRotatedSchedule, normalizeSchedule } from "./util.js";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -13,6 +13,7 @@ import {
 
 let mode = "signin"; // or "signup"
 let handlers = { onProfileSaved: () => {}, onSetupCancel: () => {} };
+let scheduleEditorRoot = null;
 
 const FRIENDLY = {
   "auth/invalid-credential": "Wrong email or password.",
@@ -31,6 +32,61 @@ function showMsg(sel, err) {
   box.hidden = false;
 }
 
+function buildScheduleEditor(existingSchedule = []) {
+  const root = el("div", { class: "schedule-editor" });
+  const days = normalizeSchedule(existingSchedule, 8, 6);
+  const inputDays = days.slice(0, 2);
+  for (const day of inputDays) {
+    const card = el("div", { class: "schedule-day-card" });
+    card.append(
+      el("div", { class: "schedule-day-head" },
+        el("strong", {}, day.day),
+        el("span", { class: "hint" }, "1–7")),
+    );
+    for (const period of day.periods) {
+      const row = el("div", { class: "schedule-period-row" });
+      const label = el("label", { class: "schedule-period-label" }, `P${period.period}`);
+      const classInput = el("input", {
+        type: "text", class: "schedule-period-input", maxlength: "40", placeholder: "Class",
+      });
+      const teacherInput = el("input", {
+        type: "text", class: "schedule-period-input schedule-period-input-small", maxlength: "40", placeholder: "Teacher",
+      });
+      classInput.value = period.className || "";
+      teacherInput.value = period.teacher || "";
+      row.append(label, classInput, teacherInput);
+      card.append(row);
+    }
+    root.append(card);
+  }
+  const preview = el("div", { class: "hint" }, "Enter Day 1 and Day 2, and we’ll fill in Days 3–8 from the rotation pattern.");
+  root.append(preview);
+  return root;
+}
+
+function collectScheduleData(root) {
+  if (!root) return [];
+  return generateRotatedSchedule(Array.from(root.querySelectorAll(".schedule-day-card")).map((card, dayIndex) => {
+    const periods = Array.from(card.querySelectorAll(".schedule-period-row")).map((row, periodIndex) => {
+      const inputs = row.querySelectorAll("input");
+      return {
+        period: periodIndex + 1,
+        className: inputs[0]?.value.trim() || "",
+        teacher: inputs[1]?.value.trim() || "",
+      };
+    });
+      return { day: `Day ${dayIndex + 1}`, periods };
+    }), 8, 6);
+}
+
+function renderScheduleEditor(existingSchedule) {
+  const container = $("#setup-schedule-editor");
+  if (!container) return null;
+  scheduleEditorRoot = buildScheduleEditor(existingSchedule);
+  container.replaceChildren(scheduleEditorRoot);
+  return scheduleEditorRoot;
+}
+
 export function initAuthUI(h) {
   handlers = h;
 
@@ -40,6 +96,8 @@ export function initAuthUI(h) {
   }
   $("#setup-c1-type").value = "phone";
   $("#setup-c2-type").value = "email";
+
+  renderScheduleEditor([]);
 
   // Toggle sign in <-> create account
   $("#auth-switch").addEventListener("click", () => {
@@ -97,6 +155,7 @@ export function initAuthUI(h) {
     const grade = Number($("#setup-grade").value);
     const c1 = { type: $("#setup-c1-type").value, value: $("#setup-c1-value").value.trim() };
     const c2 = { type: $("#setup-c2-type").value, value: $("#setup-c2-value").value.trim() };
+    const schedule = collectScheduleData(scheduleEditorRoot);
 
     if (!displayName) return showMsg("#setup-error", "Enter a display name.");
     if (!grade) return showMsg("#setup-error", "Pick your grade.");
@@ -111,6 +170,7 @@ export function initAuthUI(h) {
         grade,
         classOf: classOfFromGrade(grade), // grade auto-bumps each school year
         contacts: [c1, c2],
+        schedule,
         email: auth.currentUser.email,
         updatedAt: serverTimestamp(),
       };
@@ -139,4 +199,5 @@ export function prepareSetupScreen(editing) {
     $("#setup-c2-type").value = p.contacts[1].type;
     $("#setup-c2-value").value = p.contacts[1].value;
   }
+  renderScheduleEditor(p?.schedule || []);
 }

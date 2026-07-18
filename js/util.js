@@ -4,6 +4,77 @@ export const GRADES = [9, 10, 11, 12];
 export const CONTACT_TYPES = ["phone", "email", "instagram", "discord", "other"];
 export const SCHOOL_DOMAIN = "smtexas.org";
 
+export function normalizeSchedule(schedule, totalDays = 8, periodsPerDay = 6) {
+  const baseDays = Array.from({ length: totalDays }, (_, dayIndex) => ({
+    day: `Day ${dayIndex + 1}`,
+    periods: Array.from({ length: periodsPerDay }, (_, periodIndex) => ({
+      period: periodIndex + 1,
+      className: "",
+      teacher: "",
+    })),
+  }));
+  const source = Array.isArray(schedule) ? schedule : [];
+  return baseDays.map((baseDay, dayIndex) => {
+    const sourceDay = source[dayIndex] || {};
+    const sourcePeriods = Array.isArray(sourceDay.periods) ? sourceDay.periods : [];
+    return {
+      ...baseDay,
+      day: sourceDay.day || baseDay.day,
+      periods: Array.from({ length: periodsPerDay }, (_, periodIndex) => {
+        const sourcePeriod = sourcePeriods[periodIndex] || {};
+        return {
+          period: periodIndex + 1,
+          className: sourcePeriod.className || "",
+          teacher: sourcePeriod.teacher || "",
+        };
+      }),
+    };
+  });
+}
+
+export function generateRotatedSchedule(seedDays, totalDays = 8, periodsPerDay = 6) {
+  const seed = normalizeSchedule(seedDays, totalDays, periodsPerDay);
+  const generated = [];
+  generated[0] = {
+    ...seed[0],
+    periods: seed[0].periods.map(period => ({ ...period })),
+  };
+  generated[1] = {
+    ...seed[1],
+    periods: seed[1].periods.map(period => ({ ...period })),
+  };
+
+  const nextDayMap = [2, null, 4, 3, 5, null];
+
+  for (let dayIndex = 2; dayIndex < totalDays; dayIndex++) {
+    const source = generated[dayIndex - 1].periods;
+    const target = Array.from({ length: periodsPerDay }, (_, periodIndex) => ({
+      period: periodIndex + 1,
+      className: "",
+      teacher: "",
+    }));
+
+    for (let sourcePeriodIndex = 0; sourcePeriodIndex < source.length; sourcePeriodIndex++) {
+      const sourcePeriod = source[sourcePeriodIndex];
+      if (!sourcePeriod?.className && !sourcePeriod?.teacher) continue;
+      const nextPeriodIndex = nextDayMap[sourcePeriodIndex];
+      if (nextPeriodIndex == null) continue;
+      const targetPeriod = target[nextPeriodIndex - 1];
+      if (targetPeriod) {
+        targetPeriod.className = sourcePeriod.className;
+        targetPeriod.teacher = sourcePeriod.teacher;
+      }
+    }
+
+    generated[dayIndex] = {
+      day: `Day ${dayIndex + 1}`,
+      periods: target,
+    };
+  }
+
+  return generated;
+}
+
 // el("div", { class: "x", onclick: fn }, child, "text", [more, children])
 // Children are appended as text nodes unless they're already elements,
 // so user-entered strings are always rendered safely (no innerHTML).

@@ -1,19 +1,26 @@
 import { configured, auth, db } from "./firebase.js";
+
 import { state } from "./store.js";
+
 import {
   $, el, GRADES, SCHOOL_DOMAIN, expiryMs, isoDate,
   classOfFromGrade, gradeFromClassOf,
 } from "./util.js";
+
 import { initAuthUI, prepareSetupScreen } from "./auth-ui.js";
 import { renderCalendar } from "./calendar.js";
+
 import {
   renderSidebar, openCreate, openProfile, closeSidebar, openAvailability,
 } from "./sidebar.js";
+
 import { openFriends } from "./friends.js";
 import { dayStatusSummary } from "./availability.js";
+
 import {
   onAuthStateChanged, signOut, sendEmailVerification,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+
 import {
   doc, getDoc, getDocs, deleteDoc, updateDoc, collection, query, where, onSnapshot,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
@@ -244,9 +251,11 @@ function wireVerifyScreen() {
 /* ─── auth flow ───────────────────────────────────────────────────────── */
 
 function profileComplete(p) {
+  const scheduleOk = Array.isArray(p?.schedule) && p.schedule.length === 8
+    && p.schedule.every(day => Array.isArray(day.periods) && day.periods.length === 7);
   return p && p.displayName && p.grade &&
     Array.isArray(p.contacts) && p.contacts.length >= 2 &&
-    p.contacts[0]?.value && p.contacts[1]?.value;
+    p.contacts[0]?.value && p.contacts[1]?.value && scheduleOk;
 }
 
 let verifyPoll = null;
