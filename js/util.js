@@ -34,42 +34,86 @@ export function normalizeSchedule(schedule, totalDays = 8, periodsPerDay = 6) {
 
 export function generateRotatedSchedule(seedDays, totalDays = 8, periodsPerDay = 6) {
   const seed = normalizeSchedule(seedDays, totalDays, periodsPerDay);
-  const generated = [];
-  generated[0] = {
-    ...seed[0],
-    periods: seed[0].periods.map(period => ({ ...period })),
-  };
-  generated[1] = {
-    ...seed[1],
-    periods: seed[1].periods.map(period => ({ ...period })),
-  };
-
-  const nextDayMap = [2, null, 4, 3, 5, null];
-
-  for (let dayIndex = 2; dayIndex < totalDays; dayIndex++) {
-    const source = generated[dayIndex - 1].periods;
-    const target = Array.from({ length: periodsPerDay }, (_, periodIndex) => ({
+  const generated = Array.from({ length: totalDays }, (_, dayIndex) => ({
+    day: `Day ${dayIndex + 1}`,
+    periods: Array.from({ length: periodsPerDay }, (_, periodIndex) => ({
       period: periodIndex + 1,
       className: "",
       teacher: "",
-    }));
+    })),
+  }));
 
-    for (let sourcePeriodIndex = 0; sourcePeriodIndex < source.length; sourcePeriodIndex++) {
-      const sourcePeriod = source[sourcePeriodIndex];
-      if (!sourcePeriod?.className && !sourcePeriod?.teacher) continue;
-      const nextPeriodIndex = nextDayMap[sourcePeriodIndex];
-      if (nextPeriodIndex == null) continue;
-      const targetPeriod = target[nextPeriodIndex - 1];
-      if (targetPeriod) {
-        targetPeriod.className = sourcePeriod.className;
-        targetPeriod.teacher = sourcePeriod.teacher;
-      }
+  // Pattern derived from the image: each row is the indices (0..7) of the
+  // canonical 8-class set placed into the 6 periods for that day.
+  const pattern = [
+    [0, 1, 2, 3, 4, 5], // day 1: a b c d e f
+    [5, 0, 3, 6, 2, 7], // day 2: f a d g c h
+    [7, 5, 6, 1, 3, 4], // day 3: h f g b d e
+    [4, 7, 1, 0, 6, 2], // day 4: e h b a g c
+    [2, 4, 0, 5, 1, 3], // day 5: c e a f b d
+    [3, 2, 5, 7, 0, 6], // day 6: d c f h a g
+    [6, 3, 7, 4, 5, 1], // day 7: g d h e f b
+    [1, 6, 4, 2, 7, 0], // day 8: b g e c h a
+  ];
+
+  // Collect explicit class entries from the seed (keeps all unique classes
+  // and their start day/period). We'll place each class across days by
+  // finding where its canonical index appears in later pattern rows.
+  const classes = [];
+  for (let d = 0; d < Math.min(seed.length, totalDays); d++) {
+    const day = seed[d] || {};
+    for (let p = 0; p < Math.min(periodsPerDay, (day.periods || []).length); p++) {
+      const sp = day.periods[p] || {};
+      if (!sp.className && !sp.teacher) continue;
+      classes.push({ className: sp.className, teacher: sp.teacher, startDay: d, startPeriod: p + 1 });
+    }
+  }
+
+  // Helper to write into generated only if empty
+  const placeIfEmpty = (dayIndex, periodIndex, className, teacher) => {
+    const day = generated[dayIndex];
+    if (!day) return false;
+    const slot = day.periods[periodIndex - 1];
+    if (!slot) return false;
+    if (slot.className || slot.teacher) return false;
+    slot.className = className;
+    slot.teacher = teacher;
+    return true;
+  };
+
+  // Reserve seed slots first (ensure user-provided seed days are preserved)
+  for (const entry of classes) {
+    const _ = placeIfEmpty(entry.startDay, entry.startPeriod, entry.className, entry.teacher);
+  }
+
+  // For each canonical index, gather slots (day,period) and assign remaining
+  // occurrences to seed classes that map to that index without clobbering.
+  for (let idx = 0; idx < 8; idx++) {
+    const slots = [];
+    for (let d = 0; d < totalDays; d++) {
+      const row = pattern[d % pattern.length] || [];
+      const pos = row.indexOf(idx);
+      if (pos !== -1) slots.push({ day: d, period: pos + 1 });
     }
 
-    generated[dayIndex] = {
-      day: `Day ${dayIndex + 1}`,
-      periods: target,
-    };
+    const entriesForIdx = classes.filter(e => {
+      const row = pattern[e.startDay % pattern.length] || [];
+      return row[e.startPeriod - 1] === idx;
+    }).sort((a, b) => b.startDay - a.startDay);
+
+    for (const entry of entriesForIdx) {
+      // find the slot index corresponding to the seed occurrence (or first
+      // slot on/after its startDay)
+      let si = slots.findIndex(s => s.day >= entry.startDay);
+      if (si === -1) continue;
+      // If the exact seed slot exists (day==startDay && period==startPeriod),
+      // advance to the next occurrence for future placements.
+      if (slots[si] && slots[si].day === entry.startDay && slots[si].period === entry.startPeriod) si++;
+      for (let k = si; k < slots.length; k++) {
+        const s = slots[k];
+        placeIfEmpty(s.day, s.period, entry.className, entry.teacher);
+      }
+    }
   }
 
   return generated;

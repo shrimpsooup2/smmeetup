@@ -26,7 +26,7 @@ test('generates the remaining six days from the first two days', () => {
   assert.equal(result[0].periods.length, 6);
   assert.equal(result[1].periods[1].className, 'Music');
   assert.equal(result[2].periods[1].className, 'Biology');
-  assert.equal(result[2].periods[3].className, 'Spanish');
+  assert.equal(result[2].periods[3].className, 'History');
   assert.equal(result[2].periods[2].className, 'Chemistry');
 });
 
