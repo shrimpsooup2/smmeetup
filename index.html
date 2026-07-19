@@ -67,11 +67,14 @@
     <div class="card">
       <h1 id="setup-title">Set up your profile</h1>
       <p class="tagline">Everyone on SM Meetup shares their name, grade, and <b>two ways to reach them</b> that they actually check.</p>
+
       <form id="setup-form" novalidate>
         <div id="setup-error" class="error" hidden></div>
+
         <label>Display name
           <input id="setup-name" maxlength="40" required placeholder="First name + last initial">
         </label>
+
         <label>Grade
           <select id="setup-grade" required>
             <option value="">Select your grade…</option>
@@ -81,7 +84,9 @@
             <option value="12">12th</option>
           </select>
         </label>
+
         <p class="hint">Pick your grade right now — it moves up automatically when the new school year starts in late August.</p>
+
         <fieldset>
           <legend>Contact #1</legend>
           <div class="contact-row">
@@ -89,6 +94,7 @@
             <input id="setup-c1-value" required placeholder="e.g. (555) 123-4567">
           </div>
         </fieldset>
+
         <fieldset>
           <legend>Contact #2</legend>
           <div class="contact-row">
@@ -96,11 +102,19 @@
             <input id="setup-c2-value" required placeholder="e.g. you@gmail.com">
           </div>
         </fieldset>
+
+        <fieldset>
+          <legend>Class schedule</legend>
+          <div id="setup-schedule-editor"></div>
+          <p class="hint">Enter your 8-day rotating schedule with 6 periods each day. Blank boxes are fine for study halls or free periods.</p>
+        </fieldset>
+
         <p class="hint">Hosts and participants see these so they can coordinate with you.</p>
         <div class="btn-row">
           <button type="submit" class="btn primary">Save profile</button>
           <button type="button" id="setup-cancel" class="btn" hidden>Cancel</button>
         </div>
+
       </form>
     </div>
   </section>

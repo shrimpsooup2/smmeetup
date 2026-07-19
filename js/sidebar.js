@@ -771,6 +771,30 @@ function field(label, ...controls) {
 
 /* ─── profiles ────────────────────────────────────────────────────────── */
 
+function scheduleSection(schedule) {
+  const section = el("section", {}, el("h3", {}, "Class schedule"));
+  if (!Array.isArray(schedule) || schedule.length !== 8) {
+    section.append(el("p", { class: "hint" }, "No schedule shared yet."));
+    return section;
+  }
+  const grid = el("div", { class: "profile-schedule-grid" });
+  for (const [index, day] of schedule.entries()) {
+    const card = el("div", { class: "profile-schedule-card" });
+    card.append(el("div", { class: "schedule-day-head" },
+      el("strong", {}, day.day || `Day ${index + 1}`)));
+    const periods = Array.isArray(day.periods) ? day.periods : [];
+    for (const [periodIndex, period] of periods.slice(0, 7).entries()) {
+      card.append(el("div", { class: "schedule-view-row" },
+        el("span", { class: "schedule-view-label" }, `P${periodIndex + 1}`),
+        el("span", { class: "schedule-view-value" }, period.className || "—"),
+        el("span", { class: "schedule-view-teacher" }, period.teacher || "—")));
+    }
+    grid.append(card);
+  }
+  section.append(grid);
+  return section;
+}
+
 function profileView() {
   const p = state.profile;
   const box = el("div", { class: "side-panel" });
@@ -788,6 +812,7 @@ function profileView() {
     sec.append(el("p", { class: "contact-line" }, el("b", {}, cap(c.type) + ": "), c.value));
   }
   box.append(sec);
+  box.append(scheduleSection(p.schedule));
   box.append(el("p", { class: "hint" },
     "Anyone signed in at school can see your contact info — that's how hosts and participants coordinate."));
   box.append(el("div", { class: "btn-row" },
@@ -826,6 +851,7 @@ function personView(uid, backTo) {
       sec.append(el("p", { class: "contact-line" }, el("b", {}, cap(c.type) + ": "), c.value));
     }
     body.append(sec);
+    body.append(scheduleSection(p.schedule));
   }).catch(e => body.replaceChildren(el("p", { class: "error" }, e.message)));
 
   return box;

@@ -147,6 +147,32 @@ code {
 .contact-row { display: flex; gap: 8px; }
 .contact-row select { width: 140px; flex: none; margin-top: 0 !important; }
 .contact-row input { flex: 1; margin-top: 0 !important; }
+.schedule-editor { display: grid; gap: 10px; }
+.schedule-day-card {
+  border: 1px solid var(--line);
+  background: var(--panel-dim);
+  padding: 10px;
+}
+.schedule-day-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px; font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--navy);
+}
+.schedule-period-row {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr); gap: 6px; align-items: center; margin-bottom: 6px;
+}
+.schedule-period-label {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--dim);
+}
+.schedule-period-input {
+  width: 100%; margin: 0 !important; padding: 6px 8px; border: 1px solid var(--line-strong); background: var(--panel); font-size: 13px;
+}
+.schedule-period-input-small { font-size: 12px; }
+.profile-schedule-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.profile-schedule-card { border: 1px solid var(--line); background: var(--panel-dim); padding: 10px; }
+.schedule-view-row { display: grid; grid-template-columns: 36px minmax(0, 1fr) minmax(0, 1fr); gap: 6px; margin-top: 6px; font-size: 12px; }
+.schedule-view-label { font-family: var(--font-mono); color: var(--dim); font-weight: 600; }
+.schedule-view-value { font-weight: 600; }
+.schedule-view-teacher { color: var(--dim); }
 .auth-links { display: flex; justify-content: space-between; gap: 10px; margin: 16px 0 0; flex-wrap: wrap; }
 
 /* ── top bar ──────────────────────────────────────────────────────────── */
