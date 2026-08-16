@@ -5,12 +5,13 @@ import {
   todayIso, dateFromIso, currentGrade, gradeLabel,
 } from "./util.js";
 import { renderCalendar } from "./calendar.js";
-import { subscribeMonth, editProfile } from "./app.js";
+import { subscribeMonth, editProfile, renderActiveView } from "./app.js";
 import {
   hourBreakdown, resolveStatus, cycleDay, cycleHour, HOURS,
   flushPendingSave, openAvailabilityEditor,
 } from "./availability.js";
 import { friendsView, friendActionEl, openFriends } from "./friends.js";
+import { computeNotifications, markAllSeen, updateNotifBadge } from "./notifications.js";
 import {
   doc, getDoc, addDoc, updateDoc, deleteDoc, collection,
   serverTimestamp, arrayUnion, arrayRemove, deleteField,
@@ -18,6 +19,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 let unsubMessages = null;
+let lastSheetKey = "";
 
 /* ─── opening the different sidebar views ─────────────────────────────── */
 
@@ -25,6 +27,7 @@ let unsubMessages = null;
 export function leaveAvailMode() {
   if (state.availMode) {
     state.availMode = false;
+    state.availCollapsed = false;
     flushPendingSave();
     renderCalendar();
   }
@@ -37,7 +40,7 @@ export function openActivity(id) {
   state.sidebar = { view: "activity" };
   state.heat = null;
   renderSidebar();
-  renderCalendar();
+  renderActiveView();
 }
 
 export function openCreate(prefillDate) {
@@ -47,7 +50,7 @@ export function openCreate(prefillDate) {
   state.heat = null;
   state.sidebar = { view: "create", prefillDate: prefillDate || null };
   renderSidebar();
-  renderCalendar();
+  renderActiveView();
 }
 
 export function openProfile() {
@@ -57,7 +60,7 @@ export function openProfile() {
   state.heat = null;
   state.sidebar = { view: "profile" };
   renderSidebar();
-  renderCalendar();
+  renderActiveView();
 }
 
 export function openPerson(uid, backTo) {
@@ -73,7 +76,7 @@ export function closeSidebar() {
   state.heat = null;
   state.sidebar = { view: "empty" };
   renderSidebar();
-  renderCalendar();
+  renderActiveView();
 }
 
 /* ─── availability-marking mode ───────────────────────────────────────── */
@@ -83,18 +86,31 @@ export function openAvailability() {
   state.selectedActivityId = null;
   state.heat = null;
   state.availMode = true;
+  state.availCollapsed = false;
   state.availFocusDay = todayIso();
   state.sidebar = { view: "availability" };
+  // Works on whichever view you're in (week or month); no view switch.
+  document.dispatchEvent(new CustomEvent("avail-opened"));
   renderSidebar();
-  renderCalendar();
+  renderActiveView();
 }
 
-// A day was clicked on the calendar while marking availability.
+// A day was tapped (week or month) while marking availability.
 export function availDayClick(iso) {
   cycleDay(iso);
   state.availFocusDay = iso;
   renderSidebar();
-  renderCalendar();
+  renderActiveView();
+}
+
+export function openNotifications() {
+  stopMessages();
+  leaveAvailMode();
+  state.selectedActivityId = null;
+  state.heat = null;
+  state.sidebar = { view: "notifications" };
+  renderSidebar();
+  renderActiveView();
 }
 
 // Everything happening on one day (opened from a crowded day's "+N more").
@@ -105,7 +121,7 @@ export function openDay(iso) {
   state.heat = null;
   state.sidebar = { view: "day", iso };
   renderSidebar();
-  renderCalendar();
+  renderActiveView();
 }
 
 /* ─── live chat subscription ──────────────────────────────────────────── */
@@ -168,9 +184,57 @@ export function renderSidebar() {
     root.append(friendsView());
   } else if (v === "availability") {
     root.append(availabilityView());
+  } else if (v === "notifications") {
+    root.append(notificationsView());
   } else if (v === "day") {
     root.append(dayView(state.sidebar.iso));
   }
+
+  // Drive the mobile slide-up sheet: open when there's content to show,
+  // partial (calendar stays tappable) while marking availability.
+  document.body.dataset.sheet = v === "empty" ? "closed" : "open";
+  document.body.dataset.availmode = state.availMode ? "1" : "";
+  document.body.dataset.availCollapsed = state.availMode && state.availCollapsed ? "1" : "";
+
+  // Scroll to top only when the panel actually switches target — not on the
+  // live re-renders that happen when an activity or its roster changes.
+  const key = [v, state.selectedActivityId, state.sidebar.iso, state.sidebar.uid].join("|");
+  if (key !== lastSheetKey) { root.scrollTop = 0; lastSheetKey = key; }
+}
+
+/* ─── notifications ───────────────────────────────────────────────────── */
+
+function notificationsView() {
+  const items = computeNotifications();
+  markAllSeen();        // opening the panel clears the unread badge
+  updateNotifBadge();
+
+  const box = el("div", { class: "side-panel" });
+  box.append(el("div", { class: "side-head" },
+    el("h2", {}, "Notifications"),
+    el("button", { class: "btn icon", title: "Close", onclick: closeSidebar }, "×"),
+  ));
+
+  if (items.length === 0) {
+    box.append(el("p", { class: "hint" },
+      "You're all caught up. Friend requests, activity invites, and people asking to join your activities show up here."));
+  }
+  const list = el("div", { class: "notif-list" });
+  for (const it of items) {
+    list.append(el("button", {
+      class: `notif-row nk-${it.kind}`,
+      onclick: () => it.go === "friends" ? openFriends() : openActivity(it.activityId),
+    },
+      el("span", { class: "notif-dot" }),
+      el("span", { class: "notif-main" },
+        el("span", { class: "notif-text" }, it.text),
+        it.sub ? el("span", { class: "notif-sub" }, it.sub) : null),
+    ));
+  }
+  box.append(list);
+  box.append(el("p", { class: "hint" },
+    "Alerts for new chat messages and “someone joined” — plus notifications on your phone when the app is closed — arrive with the mobile app."));
+  return box;
 }
 
 /* ─── one day's full activity list ────────────────────────────────────── */
@@ -214,22 +278,35 @@ function dayView(iso) {
 
 function availabilityView() {
   const iso = state.availFocusDay || todayIso();
-  const box = el("div", { class: "side-panel" });
+  const collapsed = state.availCollapsed;
+  const box = el("div", { class: "side-panel avail-panel" });
+
+  // Bar stays visible even when collapsed (mobile: see the whole month).
   box.append(el("div", { class: "side-head" },
     el("h2", {}, "Your availability"),
-    el("button", { class: "btn icon", title: "Done", onclick: closeSidebar }, "×"),
+    el("button", {
+      class: "btn small avail-collapse",
+      title: collapsed ? "Expand" : "Collapse to see the whole month",
+      onclick: () => {
+        state.availCollapsed = !state.availCollapsed;
+        renderSidebar();
+      },
+    }, collapsed ? "▲ Expand" : "▼ Collapse"),
+    el("button", { class: "btn primary small avail-done", onclick: closeSidebar }, "Done"),
   ));
-  box.append(el("p", { class: "hint" },
-    "Click any day on the calendar to cycle it: ",
-    el("b", {}, "free"), " → ", el("b", {}, "busy"), " → back to default. ",
-    "Unmarked time counts as “maybe”. Friends see this when planning private meetups with you."));
   box.append(el("div", { class: "avail-legend hint" },
     el("span", { class: "avail-cell st-free demo" }), " free   ",
     el("span", { class: "avail-cell st-busy demo" }), " busy   ",
     el("span", { class: "avail-cell st-mixed demo" }), " partly   ",
     el("span", { class: "avail-cell st-maybe demo" }), " maybe",
   ));
-  box.append(el("p", { id: "avail-save", class: "hint" }, "Changes save automatically."));
+
+  const detail = el("div", { class: "avail-detail" });
+  detail.append(el("p", { class: "hint" },
+    "Tap any day on the calendar to cycle it: ",
+    el("b", {}, "free"), " → ", el("b", {}, "busy"), " → back to default. ",
+    "Unmarked time counts as “maybe”. Friends see this when planning private meetups with you."));
+  detail.append(el("p", { id: "avail-save", class: "hint" }, "Changes save automatically."));
 
   // hour fine-tune for the day last clicked
   const sec = el("section", {}, el("h3", {}, "Fine-tune " + fmtDateHuman(iso)));
@@ -251,16 +328,15 @@ function availabilityView() {
   };
   redraw();
   sec.append(list);
-  box.append(sec);
+  detail.append(sec);
 
-  box.append(el("section", {},
+  detail.append(el("section", {},
     el("h3", {}, "Repeats every week"),
-    el("p", { class: "hint" }, "Practice, work, clubs — set it once and it applies to every week. Day clicks above override it for single days."),
+    el("p", { class: "hint" }, "Practice, work, clubs — set it once and it applies to every week. Day taps above override it for single days."),
     el("button", { class: "btn", onclick: openAvailabilityEditor }, "Edit weekly schedule"),
   ));
 
-  box.append(el("div", { class: "btn-row" },
-    el("button", { class: "btn primary", onclick: closeSidebar }, "Done")));
+  box.append(detail);
   return box;
 }
 

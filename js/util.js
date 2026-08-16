@@ -73,6 +73,25 @@ export function dateFromIso(iso) {
 
 export const todayIso = () => isoDate(new Date());
 
+// The Sunday that begins the week containing d.
+export function weekStart(d) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - d.getDay());
+}
+// The 7 Date objects (Sun→Sat) of d's week.
+export function weekDays(d) {
+  const s = weekStart(d);
+  return Array.from({ length: 7 }, (_, i) =>
+    new Date(s.getFullYear(), s.getMonth(), s.getDate() + i));
+}
+// "Aug 10 – 16"  /  "Aug 31 – Sep 6"
+export function fmtWeekRange(d) {
+  const days = weekDays(d), a = days[0], b = days[6];
+  const aStr = a.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const bStr = b.toLocaleDateString(undefined,
+    a.getMonth() === b.getMonth() ? { day: "numeric" } : { month: "short", day: "numeric" });
+  return `${aStr} – ${bStr}`;
+}
+
 // 15 -> "3 PM"
 export function fmtHour(h) {
   return `${h % 12 || 12} ${h >= 12 ? "PM" : "AM"}`;

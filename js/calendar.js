@@ -5,17 +5,15 @@ import { daySummary, heatTier, dayStatusSummary } from "./availability.js";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MAX_CHIPS = 4; // beyond this a day shows 3 chips + "+N more"
+const isMobile = () => window.matchMedia("(max-width: 880px)").matches;
 
 export function renderCalendar() {
   const root = document.getElementById("calendar");
-  const label = document.getElementById("month-label");
   if (!root) return;
 
   const y = state.monthCursor.getFullYear();
   const m = state.monthCursor.getMonth();
-  label.textContent = state.monthCursor.toLocaleDateString(undefined, {
-    month: "long", year: "numeric",
-  });
+  // (the header month/week label is owned by renderHeaderNav in app.js)
 
   const heat = state.heat;
   const avail = state.availMode;
@@ -57,7 +55,10 @@ export function renderCalendar() {
           if (!isPastDay) availDayClick(iso);
           return;
         }
-        // Only clicks on the cell background / day number start a new activity
+        // On phones, tapping a day opens that day's list (small cells make
+        // precise chip taps hard); the day view also offers "create here".
+        if (isMobile()) { openDay(iso); return; }
+        // Desktop: clicks on the cell background / day number start a new activity
         if (e.target === cell || e.target.classList.contains("cal-daynum")) openCreate(iso);
       },
     }, el("div", { class: "cal-daynum" }, d.getDate()));

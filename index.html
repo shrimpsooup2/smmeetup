@@ -2,11 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>SM Meetup</title>
+<!-- Temporary favicon from the logo; replace with the dedicated favicon when ready. -->
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -14,7 +16,7 @@
   <!-- Shown when js/firebase-config.js still has placeholder values -->
   <section id="config-screen" class="screen" hidden>
     <div class="card">
-      <h1>SM Meetup</h1>
+      <img src="assets/logo.svg" alt="SM Meetup" class="card-logo">
       <p class="tagline">Almost there — Firebase isn't connected yet.</p>
       <ol class="setup-steps">
         <li>Create a project at <b>console.firebase.google.com</b></li>
@@ -29,7 +31,7 @@
   <!-- Sign in / create account -->
   <section id="auth-screen" class="screen" hidden>
     <div class="card">
-      <h1>SM Meetup</h1>
+      <img src="assets/logo.svg" alt="SM Meetup" class="card-logo">
       <p class="tagline">Find and host activities with people at school.</p>
       <form id="auth-form" novalidate>
         <div id="auth-error" class="error" hidden></div>
@@ -108,31 +110,121 @@
   <!-- Main app -->
   <section id="main-screen" hidden>
     <header id="topbar">
-      <div class="brand"><span class="brand-mark">SM</span><span class="brand-name">Meetup</span></div>
-      <div class="month-nav">
-        <button id="prev-month" class="btn icon" title="Previous month">&lsaquo;</button>
-        <span id="month-label"></span>
-        <button id="next-month" class="btn icon" title="Next month">&rsaquo;</button>
-        <button id="today-btn" class="btn small">Today</button>
-      </div>
-      <div id="grade-filter" class="grade-filter" title="Show activities open to these grades"></div>
+      <div class="brand"><img src="assets/logo.svg" alt="SM Meetup" class="brand-logo"></div>
       <div class="spacer"></div>
-      <button id="avail-btn" class="btn" title="Mark when you're free or busy">Availability</button>
-      <button id="friends-btn" class="btn">Friends <span id="friends-badge" class="count-badge" hidden></span></button>
-      <button id="create-btn" class="btn primary">+ Create activity</button>
-      <button id="profile-btn" class="linklike"></button>
-      <button id="signout-btn" class="linklike">Sign out</button>
+      <button id="notif-btn" class="icon-btn" title="Notifications" aria-label="Notifications">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8.5a6 6 0 0 0-12 0c0 6.5-2.5 8.5-2.5 8.5h17S18 15 18 8.5"/><path d="M13.7 20.5a2 2 0 0 1-3.4 0"/></svg>
+        <span id="notif-badge" class="count-badge" hidden></span>
+      </button>
+      <div class="topbar-actions">
+        <button id="friends-btn" class="btn">Friends <span class="friends-badge count-badge" hidden></span></button>
+        <button id="create-btn" class="btn primary">+ Create activity</button>
+        <button id="profile-btn" class="linklike"></button>
+        <button id="signout-btn" class="linklike">Sign out</button>
+      </div>
     </header>
     <div id="notice-banner" class="notice" hidden></div>
     <div id="layout">
-      <main id="calendar"></main>
+      <div id="mainpane">
+        <div id="cal-toolbar">
+          <div class="month-nav">
+            <button id="prev-month" class="btn icon" title="Previous" aria-label="Previous">&lsaquo;</button>
+            <span id="month-label"></span>
+            <button id="next-month" class="btn icon" title="Next" aria-label="Next">&rsaquo;</button>
+            <button id="today-btn" class="btn small">Today</button>
+          </div>
+          <div class="spacer"></div>
+          <div class="view-toggle" role="tablist" aria-label="Switch calendar view">
+            <button id="view-week" class="vt-btn" role="tab">Week</button>
+            <button id="view-month" class="vt-btn" role="tab">Month</button>
+          </div>
+          <div class="filter-wrap">
+            <button id="grade-btn" class="filter-btn" aria-haspopup="true" aria-expanded="false" title="Filter activities by grade">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5z"/></svg>
+              <span id="grade-btn-label">All grades</span>
+            </button>
+            <div id="grade-pop" class="filter-pop" hidden></div>
+          </div>
+          <button id="avail-btn" class="btn avail-toolbar-btn" title="Mark when you're free or busy">Availability</button>
+        </div>
+        <section id="weekview"></section>
+        <section id="calendar" hidden></section>
+      </div>
       <aside id="sidebar"></aside>
     </div>
+
+    <!-- Mobile-only bottom tab bar (hidden on desktop via CSS) -->
+    <nav id="bottom-nav" class="bottom-nav" aria-label="Primary">
+      <button class="bnav-item" id="bnav-calendar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="16" rx="2.5"/><path d="M3.5 9.5h17M8 2.8v3.4M16 2.8v3.4"/></svg>
+        <span>Calendar</span>
+      </button>
+      <button class="bnav-item" id="bnav-avail">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 1.8"/></svg>
+        <span>Free / busy</span>
+      </button>
+      <button class="bnav-create" id="bnav-create" aria-label="Create activity"><span aria-hidden="true">+</span></button>
+      <button class="bnav-item" id="bnav-friends">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="3.3"/><path d="M3.5 19c0-3.2 2.5-5.3 5.5-5.3s5.5 2.1 5.5 5.3"/><path d="M16 6.4a3 3 0 0 1 0 5.8M17.8 19c0-2.2-.7-3.9-1.9-5"/></svg>
+        <span>Friends</span>
+        <span class="friends-badge count-badge bnav-badge" hidden></span>
+      </button>
+      <button class="bnav-item" id="bnav-profile">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.2" r="3.6"/><path d="M5.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/></svg>
+        <span>You</span>
+      </button>
+    </nav>
   </section>
 
   <!-- Availability editor (content rendered by js/availability.js) -->
   <div id="avail-overlay" class="overlay" hidden></div>
 
+  <!-- Boot diagnostics: if the app hasn't shown a screen a few seconds after
+       load, something failed (usually a missing/unloadable JS file). Show
+       what we know instead of a blank page. -->
+  <section id="boot-fallback" class="screen" hidden>
+    <div class="card">
+      <h1>SM Meetup didn't start</h1>
+      <p class="tagline">The page loaded, but the app's JavaScript never ran.</p>
+      <div class="error" style="white-space: pre-wrap;" id="boot-errors"></div>
+      <p class="hint">Usual suspects, in order:</p>
+      <ol class="setup-steps">
+        <li>The <code>js/</code> folder (or a file in it) didn't get pushed to the
+            repo — every file above must exist at exactly that path.</li>
+        <li>The files are nested one folder too deep — <code>index.html</code> and
+            the <code>js/</code> folder must sit at the same level being served.</li>
+        <li>An old cached version — hard refresh with <b>Ctrl+Shift+R</b>.</li>
+        <li>Press <b>F12</b> → Console for the full error details.</li>
+      </ol>
+    </div>
+  </section>
+  <script>
+    // Plain (non-module) script so it runs even when the module graph dies.
+    (function () {
+      var errs = [];
+      window.addEventListener("error", function (e) {
+        if (e.target && (e.target.src || e.target.href)) {
+          errs.push("Failed to load: " + (e.target.src || e.target.href));
+        } else if (e.message) {
+          errs.push(e.message + (e.filename ? "  (" + e.filename + ")" : ""));
+        }
+      }, true);
+      window.addEventListener("unhandledrejection", function (e) {
+        errs.push(String((e.reason && e.reason.message) || e.reason));
+      });
+      setTimeout(function () {
+        var screens = ["config", "auth", "verify", "setup", "main"];
+        for (var i = 0; i < screens.length; i++) {
+          var s = document.getElementById(screens[i] + "-screen");
+          if (s && !s.hidden) return; // app booted fine
+        }
+        document.getElementById("boot-errors").textContent = errs.length
+          ? errs.join("\n")
+          : "No specific error was captured — js/app.js probably never loaded at all.";
+        document.getElementById("boot-fallback").hidden = false;
+      }, 4000);
+    })();
+  </script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

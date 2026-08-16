@@ -1,16 +1,18 @@
 import { configured, auth, db } from "./firebase.js";
 import { state } from "./store.js";
 import {
-  $, el, GRADES, SCHOOL_DOMAIN, expiryMs, isoDate,
-  classOfFromGrade, gradeFromClassOf,
+  $, el, GRADES, SCHOOL_DOMAIN, expiryMs, isoDate, monthKeyOf, dateFromIso,
+  classOfFromGrade, gradeFromClassOf, weekDays, weekStart, fmtWeekRange,
 } from "./util.js";
 import { initAuthUI, prepareSetupScreen } from "./auth-ui.js";
 import { renderCalendar } from "./calendar.js";
+import { renderWeek } from "./weekview.js";
 import {
   renderSidebar, openCreate, openProfile, closeSidebar, openAvailability,
+  openNotifications,
 } from "./sidebar.js";
 import { openFriends } from "./friends.js";
-import { dayStatusSummary } from "./availability.js";
+import { updateNotifBadge } from "./notifications.js";
 import {
   onAuthStateChanged, signOut, sendEmailVerification,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
@@ -36,15 +38,30 @@ function showNotice(text) {
 
 let unsubPublic = null;
 let unsubPrivate = null;
+let subscribedKey = "";
 
-export function subscribeMonth() {
-  if (unsubPublic) unsubPublic();
+// Which month(s) the visible view touches (a week can straddle two months).
+function neededMonthKeys() {
+  if (state.calView === "week") {
+    return [...new Set(weekDays(state.weekCursor).map(d => monthKeyOf(isoDate(d))))];
+  }
   const y = state.monthCursor.getFullYear();
   const m = String(state.monthCursor.getMonth() + 1).padStart(2, "0");
+  return [`${y}-${m}`];
+}
+
+// (Re)subscribe to public activities for the current view's months. Kept as
+// subscribeMonth for its many callers; it now follows week or month view.
+export function subscribeMonth() {
+  const keys = neededMonthKeys();
+  const key = keys.join(",");
+  if (key === subscribedKey && unsubPublic) return; // already covering these months
+  subscribedKey = key;
+  if (unsubPublic) unsubPublic();
   const q = query(
     collection(db, "activities"),
     where("visibility", "==", "public"),
-    where("monthKeys", "array-contains", `${y}-${m}`),
+    where("monthKeys", "array-contains-any", keys),
   );
   unsubPublic = onSnapshot(q, snap => {
     state.publicActs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -58,6 +75,8 @@ export function subscribeMonth() {
   });
 }
 
+let unsubHosted = null;
+
 function subscribePrivate() {
   if (unsubPrivate) unsubPrivate();
   const q = query(
@@ -70,14 +89,31 @@ function subscribePrivate() {
   }, err => console.error("private activities:", err));
 }
 
+// Everything I host (public or private) — powers join-request notifications
+// and keeps my own activities visible even outside the shown month.
+function subscribeHosted() {
+  if (unsubHosted) unsubHosted();
+  const q = query(collection(db, "activities"), where("hostUid", "==", state.user.uid));
+  unsubHosted = onSnapshot(q, snap => {
+    state.hostedActs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    mergeActivities();
+  }, err => console.error("hosted activities:", err));
+}
+
 const sweptIds = new Set();
+
+export function renderActiveView() {
+  if (state.calView === "week") renderWeek();
+  else renderCalendar();
+}
 
 function mergeActivities() {
   const map = new Map();
-  for (const a of [...state.publicActs, ...state.privateActs]) map.set(a.id, a);
+  for (const a of [...state.publicActs, ...state.privateActs, ...state.hostedActs]) map.set(a.id, a);
   state.activities = [...map.values()];
-  renderCalendar();
-  if (state.sidebar.view === "activity") renderSidebar();
+  renderActiveView();
+  updateNotifBadge();
+  if (state.sidebar.view === "activity" || state.sidebar.view === "notifications") renderSidebar();
 
   // opportunistic cleanup of expired activities we can see
   const now = Date.now();
@@ -116,11 +152,13 @@ function subscribeSocial() {
   stopSocial();
   const uid = state.user.uid;
   const refresh = () => {
-    const badge = $("#friends-badge");
     const n = state.social.incoming.length;
-    badge.hidden = n === 0;
-    badge.textContent = n;
-    if (state.sidebar.view === "friends" || state.sidebar.view === "person") renderSidebar();
+    for (const badge of document.querySelectorAll(".friends-badge")) {
+      badge.hidden = n === 0;
+      badge.textContent = n;
+    }
+    updateNotifBadge();
+    if (["friends", "person", "notifications"].includes(state.sidebar.view)) renderSidebar();
   };
   unsubSocial = [
     onSnapshot(query(collection(db, "friendships"), where("users", "array-contains", uid)),
@@ -151,12 +189,52 @@ function stopSocial() {
   state.social = { friends: [], incoming: [], outgoing: [] };
 }
 
-/* ─── month nav / profile editing ─────────────────────────────────────── */
+/* ─── view switching (week / month) + header nav ──────────────────────── */
 
 function setMonth(d) {
   state.monthCursor = d;
   subscribeMonth();
   renderCalendar();
+  renderHeaderNav();
+}
+
+// Show the week agenda or the month grid; keep header + data in step.
+export function setCalView(view, { jumpToday = false } = {}) {
+  state.calView = view;
+  if (jumpToday) {
+    if (view === "week") state.weekCursor = new Date();
+    else { const d = new Date(); d.setDate(1); state.monthCursor = d; }
+  }
+  const wv = $("#weekview"), cal = $("#calendar");
+  if (wv) wv.hidden = view !== "week";
+  if (cal) cal.hidden = view !== "month";
+  document.body.dataset.calview = view;
+  subscribeMonth();
+  renderHeaderNav();
+  renderActiveView();
+}
+
+function renderHeaderNav() {
+  const label = $("#month-label");
+  if (label) {
+    label.textContent = state.calView === "week"
+      ? fmtWeekRange(state.weekCursor)
+      : state.monthCursor.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  }
+  document.body.dataset.calview = state.calView;
+}
+
+function navStep(dir) {
+  if (state.calView === "week") {
+    const c = state.weekCursor;
+    state.weekCursor = new Date(c.getFullYear(), c.getMonth(), c.getDate() + dir * 7);
+    subscribeMonth();
+    renderHeaderNav();
+    renderWeek();
+  } else {
+    const c = state.monthCursor;
+    setMonth(new Date(c.getFullYear(), c.getMonth() + dir, 1));
+  }
 }
 
 export function editProfile() {
@@ -165,14 +243,12 @@ export function editProfile() {
 }
 
 function wireHeader() {
-  const cur = () => state.monthCursor;
-  $("#prev-month").addEventListener("click", () =>
-    setMonth(new Date(cur().getFullYear(), cur().getMonth() - 1, 1)));
-  $("#next-month").addEventListener("click", () =>
-    setMonth(new Date(cur().getFullYear(), cur().getMonth() + 1, 1)));
-  $("#today-btn").addEventListener("click", () => {
-    const d = new Date(); d.setDate(1); setMonth(d);
-  });
+  $("#prev-month").addEventListener("click", () => navStep(-1));
+  $("#next-month").addEventListener("click", () => navStep(1));
+  $("#today-btn").addEventListener("click", () => setCalView(state.calView, { jumpToday: true }));
+
+  $("#view-week").addEventListener("click", () => setCalView("week"));
+  $("#view-month").addEventListener("click", () => setCalView("month"));
 
   $("#create-btn").addEventListener("click", () => openCreate());
   $("#avail-btn").addEventListener("click", () =>
@@ -180,40 +256,98 @@ function wireHeader() {
   $("#friends-btn").addEventListener("click", openFriends);
   $("#profile-btn").addEventListener("click", () => openProfile());
   $("#signout-btn").addEventListener("click", () => signOut(auth));
+  $("#notif-btn").addEventListener("click", () =>
+    state.sidebar.view === "notifications" ? closeSidebar() : openNotifications());
 
-  const gf = $("#grade-filter");
-  gf.append(el("span", { class: "hint" }, "Grades:"));
+  // Mobile bottom tab bar
+  $("#bnav-calendar").addEventListener("click", () => {
+    closeSidebar();
+    if (state.calView === "week") renderWeek(); // re-centre on today
+  });
+  $("#bnav-avail").addEventListener("click", () =>
+    state.availMode ? closeSidebar() : openAvailability());
+  $("#bnav-create").addEventListener("click", () => openCreate());
+  $("#bnav-friends").addEventListener("click", openFriends);
+  $("#bnav-profile").addEventListener("click", () => openProfile());
+
+  wireGradeFilter();
+}
+
+/* ─── grade filter (dropdown popover) ─────────────────────────────────── */
+
+function wireGradeFilter() {
+  const btn = $("#grade-btn");
+  const pop = $("#grade-pop");
+  const label = $("#grade-btn-label");
+  const boxes = [];
+
+  const syncLabel = () => {
+    const on = GRADES.filter(g => state.gradeFilter.has(g));
+    if (on.length === GRADES.length) label.textContent = "All grades";
+    else if (on.length === 0) label.textContent = "No grades";
+    else label.textContent = on.map(g => g + "th").join(", ");
+    btn.classList.toggle("filtered", on.length !== GRADES.length);
+  };
+
+  const selectAll = el("button", { type: "button", class: "filter-all" }, "Select all");
+  selectAll.addEventListener("click", () => {
+    const turnOn = state.gradeFilter.size < GRADES.length;
+    for (const { g, cb } of boxes) {
+      cb.checked = turnOn;
+      if (turnOn) state.gradeFilter.add(g); else state.gradeFilter.delete(g);
+    }
+    selectAll.textContent = turnOn ? "Clear all" : "Select all";
+    syncLabel();
+    renderActiveView();
+  });
+  pop.append(el("div", { class: "filter-head" }, el("span", {}, "Show grades"), selectAll));
+
   for (const g of GRADES) {
     const cb = el("input", { type: "checkbox", checked: true });
     cb.addEventListener("change", () => {
-      if (cb.checked) state.gradeFilter.add(g);
-      else state.gradeFilter.delete(g);
-      renderCalendar();
+      if (cb.checked) state.gradeFilter.add(g); else state.gradeFilter.delete(g);
+      selectAll.textContent = state.gradeFilter.size < GRADES.length ? "Select all" : "Clear all";
+      syncLabel();
+      renderActiveView();
     });
-    gf.append(el("label", { class: "check pill" }, cb, ` ${g}`));
+    boxes.push({ g, cb });
+    pop.append(el("label", { class: "filter-opt" }, cb, el("span", {}, `${g}th grade`)));
   }
+
+  const setOpen = open => { pop.hidden = !open; btn.setAttribute("aria-expanded", String(open)); };
+  btn.addEventListener("click", e => { e.stopPropagation(); setOpen(pop.hidden); });
+  document.addEventListener("click", e => {
+    if (!pop.hidden && !pop.contains(e.target) && !btn.contains(e.target)) setOpen(false);
+  });
+  syncLabel();
 }
 
 /* ─── "mark your availability" nudge ──────────────────────────────────── */
-// Pulsing dot on the Availability button when the next 7 days are all
-// unmarked — a gentle reminder to keep it up to date.
+// Pulsing dot on the Availability buttons until you've opened availability at
+// least once during the current (Sun-start) week.
 
+const AVAIL_TOUCH_KEY = "smm:availTouched";
+function markAvailTouched() {
+  try { localStorage.setItem(AVAIL_TOUCH_KEY, isoDate(new Date())); } catch { /* ignore */ }
+}
+function availTouchedThisWeek() {
+  try {
+    const s = localStorage.getItem(AVAIL_TOUCH_KEY);
+    if (!s) return false;
+    return dateFromIso(s) >= weekStart(new Date());
+  } catch { return false; }
+}
 function updateAvailNudge() {
-  const btn = $("#avail-btn");
-  if (!btn) return;
-  if (!state.profile) { btn.classList.remove("nudge"); return; }
-  const t = new Date();
-  let marked = false;
-  for (let i = 0; i < 7 && !marked; i++) {
-    const iso = isoDate(new Date(t.getFullYear(), t.getMonth(), t.getDate() + i));
-    if (dayStatusSummary(state.profile, iso) !== "maybe") marked = true;
+  const show = !!state.profile && !availTouchedThisWeek();
+  for (const sel of ["#avail-btn", "#bnav-avail"]) {
+    const b = $(sel);
+    if (b) b.classList.toggle("nudge", show);
   }
-  btn.classList.toggle("nudge", !marked);
-  btn.title = marked
-    ? "Mark when you're free or busy"
-    : "Mark your availability for this week!";
+  const t = $("#avail-btn");
+  if (t) t.title = show ? "Mark your availability for this week!" : "Mark when you're free or busy";
 }
 document.addEventListener("avail-changed", updateAvailNudge);
+document.addEventListener("avail-opened", () => { markAvailTouched(); updateAvailNudge(); });
 
 /* ─── email verification screen ───────────────────────────────────────── */
 
@@ -261,9 +395,12 @@ async function onUser(user) {
     state.profile = null;
     if (unsubPublic) { unsubPublic(); unsubPublic = null; }
     if (unsubPrivate) { unsubPrivate(); unsubPrivate = null; }
+    if (unsubHosted) { unsubHosted(); unsubHosted = null; }
+    subscribedKey = "";
     stopSocial();
-    state.publicActs = []; state.privateActs = []; state.activities = [];
+    state.publicActs = []; state.privateActs = []; state.hostedActs = []; state.activities = [];
     sweptIds.clear();
+    updateNotifBadge();
     closeSidebar();
     showScreen("auth");
     return;
@@ -345,13 +482,14 @@ async function syncGrade() {
 function enterMain() {
   showScreen("main");
   $("#profile-btn").textContent = state.profile.displayName;
-  subscribeMonth();
   subscribePrivate();
+  subscribeHosted();
   subscribeSocial();
   sweepMyExpired();
-  renderCalendar();
+  setCalView("week", { jumpToday: true }); // default landing = vertical week view
   renderSidebar();
   updateAvailNudge();
+  updateNotifBadge();
 }
 
 /* ─── boot ────────────────────────────────────────────────────────────── */
